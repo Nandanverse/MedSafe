@@ -1,0 +1,96 @@
+# TrueMed patient / pharmacy / regulator app.
+#
+# Dependency policy, because it is not obvious and it matters for reproducibility:
+#
+# Constraints are caret ranges on versions that were current at the time of
+# writing, not exact pins. An exact pin would be more reproducible in principle
+# and worse in practice here — `flutter pub get` has to resolve against whatever
+# `flutter_localizations` pulls in for the installed Flutter SDK, and an
+# over-pinned file fails to resolve on a machine with a slightly different SDK
+# with an error that reads like a broken project rather than a version conflict.
+# `pubspec.lock` is the artefact that pins exact versions; it is committed.
+#
+# `intl` is deliberately `any`. It is the one package whose version is dictated
+# by `flutter_localizations`, and naming any constraint at all is the most common
+# cause of "version solving failed" in a Flutter project that uses l10n.
+name: truemed
+description: >-
+  Verify that a medicine or vaccine is genuine by scanning its QR code. Works
+  offline for signature checks; connects for duplicate-scan and cold-chain
+  status.
+publish_to: none
+
+# The build number is what Play Store orders by. The name is what a patient
+# reads in a bug report.
+version: 1.0.0+1
+
+environment:
+  # Dart 3.3 supplies the class modifiers (`abstract final class`) used throughout
+  # lib/core, but the floor here is set by the UI, not the core: `lib/ui/theme.dart`
+  # uses the Material 3 surface roles (`surfaceContainerHighest` and friends), which
+  # landed in Flutter 3.22 when they replaced the deprecated `surfaceVariant`.
+  #
+  # Declaring the real floor matters more than declaring a generous one. A build on
+  # 3.19 would not fail at `pub get`; it would fail later with "the getter
+  # 'surfaceContainerHighest' isn't defined", which reads like a typo rather than a
+  # version problem and is the kind of error that costs an afternoon.
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Camera QR scanning. Every use of this package is confined to
+  # lib/ui/scan/scanner_view.dart — see the note at the top of that file. Its
+  # controller API changed shape across majors, so containing it to one file
+  # means an upgrade touches one file rather than the whole scan flow.
+  mobile_scanner: ^5.2.3
+
+  # ECDSA P-256 verification. The only cryptography dependency, and the only one
+  # whose behaviour is checked against Python and Node fixtures rather than
+  # trusted.
+  pointycastle: ^3.9.1
+
+  # Keystore-backed storage on Android, Keychain on iOS. Holds the API key for
+  # pharmacy and regulator roles, and the cached trust bundle. A trust bundle in
+  # plain SharedPreferences would be editable on a rooted device, which is
+  # exactly the attack the root signature exists to stop — though note the
+  # signature, not the storage, is what actually makes it safe.
+  flutter_secure_storage: ^9.2.2
+
+  http: ^1.2.2
+
+  # Photograph of the suspect strip for a counterfeit report.
+  image_picker: ^1.1.2
+
+  # Scan history and UI preferences. Nothing secret goes here.
+  shared_preferences: ^2.3.2
+
+  # Version is chosen by flutter_localizations; see the header.
+  intl: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    # The trust bundle shipped in the APK, so a first launch with no network can
+    # still verify signatures. It is not trusted because it is bundled — it is
+    # trusted because its root signature verifies against the key pinned in
+    # lib/core/pinned_root_key.dart, exactly like one fetched over the network.
+    #
+    # The file committed here is the development bundle from
+    # backend/tests/fixtures/fixtures.json, whose root private key is public. A
+    # real deployment replaces this file and passes the matching
+    # --dart-define=TRUEMED_ROOT_SPKI_B64. See mobile/README.md.
+    - assets/trust_bundle.json
+
+  # No custom fonts. The system font renders Devanagari correctly on every
+  # Android device the app targets, and a bundled Latin-only font would silently
+  # fall back for Hindi text while adding weight to the APK.

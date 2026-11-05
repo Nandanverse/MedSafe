@@ -1,3 +1,84 @@
-node_modules/
+# ─── Secrets: never commit these ───────────────────────────────────────────
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+!**/*public*.pem
 keys/
+secrets/
+qr-generator/keys/
+backend/wallet/
+backend/src/fabric/wallet/
+
+# Fabric generated crypto material — regenerate with cryptogen, never commit
+blockchain/network/organizations/
+blockchain/network/crypto-config/
+blockchain/network/channel-artifacts/
+blockchain/network/system-genesis-block/
+*.block
+*.tx
+
+# ─── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+qr-generator/out/
+!qr-generator/out/.gitkeep
+
+# ─── Node ──────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+coverage/
+dist/
+build/
+
+# ─── Go ────────────────────────────────────────────────────────────────────
+*.exe
+*.test
+vendor/
+chaincode.tar.gz
+
+# ─── Flutter / Dart ────────────────────────────────────────────────────────
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/key.properties
+*.jks
+*.keystore
+!mobile/android/app/debug.keystore
+
+# ─── PlatformIO / ESP32 ────────────────────────────────────────────────────
+iot/.pio/
+iot/.vscode/
+iot/include/secrets.h
+
+# ─── Docker / data volumes ─────────────────────────────────────────────────
+data/
+pgdata/
+grafana-data/
+redis-data/
+
+# ─── Editors / OS ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── OneDrive sync artefacts ───────────────────────────────────────────────
+*.tmp
+~$*

@@ -1,0 +1,19 @@
+# TrueMed QR generator — development dependencies
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# If you cannot install anything (air-gapped lab machine, no registry access),
+# the suite still runs with no third-party test framework at all:
+#
+#   python3 tools/run_tests.py
+#
+# That path needs only `cryptography`; the eight QR-rendering tests skip
+# themselves when `qrcode` is missing rather than failing.
+
+-r requirements.txt
+
+pytest>=8.0.0
+
+# Reading QR codes back out of generated PNGs, so the round-trip tests in
+# tests/test_verifier.py::TestImageDecoding actually run instead of skipping.
+opencv-python-headless>=4.9.0

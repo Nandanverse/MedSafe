@@ -1,0 +1,25 @@
+# TrueMed QR generator — runtime dependencies
+#
+# All free and open-source. Versions are lower-bounded rather than pinned exactly
+# so a fresh `pip install` on a college lab machine does not fail on a yanked
+# patch release; `pip freeze > requirements.lock.txt` after install if you need
+# byte-for-byte reproducibility for a submission.
+
+# ECDSA P-256 signing and verification. The only hard dependency of the
+# security-critical code path.
+cryptography>=42.0.0
+
+# QR matrix construction. Pure Python, no compiled extensions.
+qrcode>=7.4.2
+
+# PNG rendering and the caption strip. Pulled in by qrcode[pil] as well, listed
+# explicitly because generator.py imports it directly.
+Pillow>=10.2.0
+
+# ── Optional ──────────────────────────────────────────────────────────────────
+# Reading a QR *out of* an image file, used by `main.py verify --image` and the
+# `verify_image` helper. Not needed to generate codes, and not needed by the
+# mobile app (which uses its own camera decoder), so it is commented out to keep
+# the default install small. Uncomment if you want to verify PNGs from the CLI.
+#
+# opencv-python-headless>=4.9.0

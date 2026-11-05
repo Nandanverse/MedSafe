@@ -1,0 +1,108 @@
+# Static analysis configuration.
+#
+# There is no `dart analyze` available in the environment this project was written
+# in, so this file is not cosmetic — it is the substitute for a type checker running
+# over the author's shoulder, and the three `language:` switches below are the part
+# that matters most.
+#
+# `strict-casts` in particular is a security setting in this codebase, not a style
+# one. Every response from the API arrives as `Object?` from `jsonDecode`, and the
+# whole point of `lib/api/envelope.dart` is that a malformed response must never
+# become a verdict. With implicit casts allowed, `final int n = data['count'];`
+# compiles and throws at runtime on a server that sends a string — deep inside a
+# parse, where the catch turns it into a generic failure. With `strict-casts: true`
+# it does not compile at all, which is where that problem belongs.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    # No implicit `dynamic` -> T downcasts. See the note above.
+    strict-casts: true
+    # A missing type argument is not silently inferred as `dynamic`.
+    strict-raw-types: true
+    # An unannotated parameter or return does not fall back to `dynamic`.
+    strict-inference: true
+
+  errors:
+    # Promoted from warnings, because each of these has already produced a real bug
+    # in this project or would produce one silently:
+
+    # A dropped Future is how a keystore write ends up never happening. The stores
+    # deliberately `await` every persist; this makes forgetting one fail the build.
+    unawaited_futures: error
+
+    # `data['x'].foo()` on a dynamic bypasses every guarantee the envelope parser
+    # provides. There is no legitimate dynamic call anywhere in this app.
+    avoid_dynamic_calls: error
+
+    # An unused import after a refactor is harmless; an unused *local* is usually a
+    # half-finished edit, and in a verification path a computed-but-unread value is
+    # a check that silently does nothing.
+    unused_local_variable: error
+
+    # Downgraded: the project's doc comments reference `§` section numbers and
+    # backticked identifiers from other layers on purpose, and a few of those are not
+    # resolvable symbols. They are still the most useful part of the file.
+    comment_references: ignore
+
+    # TODO comments are banned by convention in this project rather than by the
+    # analyzer — there are none, and a lint that fires on the word would fire on
+    # prose about them.
+    todo: ignore
+
+linter:
+  rules:
+    # ── Correctness ──────────────────────────────────────────────────────────
+    always_declare_return_types: true
+    avoid_empty_else: true
+    avoid_slow_async_io: true
+    avoid_type_to_string: true
+    cancel_subscriptions: true
+    close_sinks: true
+    # `api/client.dart` catches `on Object` deliberately in a few places and always
+    # rethrows or converts; a bare `catch (e) {}` that swallows is the thing to catch.
+    empty_catches: true
+    literal_only_boolean_expressions: true
+    no_adjacent_strings_in_list: true
+    prefer_void_to_null: true
+    test_types_in_equals: true
+    throw_in_finally: true
+    unnecessary_statements: true
+    use_build_context_synchronously: true
+
+    # ── Style the project actually follows ───────────────────────────────────
+    avoid_positional_boolean_parameters: true
+    # No `print`. `debugPrint` is the only logging this app does, and it is stripped
+    # from a release build; `print` is not, and a scan log in `logcat` is exactly the
+    # health data the DPDP note in config.dart is about.
+    avoid_print: true
+    avoid_unused_constructor_parameters: true
+    directives_ordering: true
+    prefer_final_locals: true
+    prefer_single_quotes: true
+    require_trailing_commas: true
+    sort_child_properties_last: true
+    unnecessary_lambdas: true
+    unnecessary_parenthesis: true
+    use_named_constants: true
+    use_super_parameters: true
+
+    # ── Explicitly off ───────────────────────────────────────────────────────
+    # Types are written out throughout this codebase, including on locals, because
+    # a reviewer reading a verification routine should not have to infer whether a
+    # value is `String` or `List<int>`. `always_specify_types` would enforce that,
+    # but it also demands them in places where they are pure noise, so the
+    # convention is followed by hand and `omit_local_variable_types` — which would
+    # fight it — is the one that has to be off.
+    always_specify_types: false
+    omit_local_variable_types: false
+    # An explicit argument that happens to equal the default is often the point:
+    # `TrustBundle.fromJson(text, requireSignature: true)` states a security
+    # decision at the call site, and a lint that deletes it deletes the statement.
+    avoid_redundant_argument_values: false
+    # One-line documentation on every public member would mean a comment on every
+    # `Widget build`. The files carry library-level documentation instead.
+    public_member_api_docs: false
+    # `lines_longer_than_80_chars` is off: the project formats to 80 by hand and a
+    # lint that fires on a URL in a comment trains people to ignore lints.
+    lines_longer_than_80_chars: false

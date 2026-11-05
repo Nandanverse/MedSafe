@@ -1,0 +1,234 @@
+# TrueMed — channel configuration.
+#
+# Consumed by configtxgen (via scripts/generate.sh) to produce the genesis block
+# for the application channel. Paths below are relative to the directory
+# configtxgen runs in, which the script sets to this directory.
+#
+# There is no system channel and no Consortium section. Fabric 2.3 removed the
+# system channel in favour of the channel participation API, so the genesis block
+# is created directly for the application channel with `configtxgen -outputBlock`
+# and handed to the orderer with `osnadmin channel join`. Configuration copied
+# from a Fabric 1.4 tutorial — a Consortium name, ORDERER_GENERAL_GENESISMETHOD=file
+# — will fail here, and the error message points at the wrong thing.
+
+################################################################################
+# Organizations
+################################################################################
+Organizations:
+
+  - &OrdererOrg
+    Name: OrdererOrg
+    ID: OrdererMSP
+    MSPDir: organizations/ordererOrganizations/truemed.in/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Writers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Admins:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin')"
+    OrdererEndpoints:
+      - orderer.truemed.in:7050
+
+  - &Manufacturer
+    Name: ManufacturerMSP
+    ID: ManufacturerMSP
+    MSPDir: organizations/peerOrganizations/manufacturer.truemed.in/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('ManufacturerMSP.admin', 'ManufacturerMSP.peer', 'ManufacturerMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('ManufacturerMSP.admin', 'ManufacturerMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('ManufacturerMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('ManufacturerMSP.peer')"
+    # Anchor peers are declared here rather than added afterwards with
+    # configtxlator surgery. They land in the genesis block, so cross-organisation
+    # gossip works from the first block instead of after a five-step channel
+    # update that is easy to get wrong and hard to debug.
+    AnchorPeers:
+      - Host: peer0.manufacturer.truemed.in
+        Port: 7051
+
+  - &Distributor
+    Name: DistributorMSP
+    ID: DistributorMSP
+    MSPDir: organizations/peerOrganizations/distributor.truemed.in/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('DistributorMSP.admin', 'DistributorMSP.peer', 'DistributorMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('DistributorMSP.admin', 'DistributorMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('DistributorMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('DistributorMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.distributor.truemed.in
+        Port: 9051
+
+  - &Regulator
+    Name: RegulatorMSP
+    ID: RegulatorMSP
+    MSPDir: organizations/peerOrganizations/regulator.truemed.in/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('RegulatorMSP.admin', 'RegulatorMSP.peer', 'RegulatorMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('RegulatorMSP.admin', 'RegulatorMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('RegulatorMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('RegulatorMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.regulator.truemed.in
+        Port: 11051
+
+################################################################################
+# Capabilities
+################################################################################
+Capabilities:
+  Channel: &ChannelCapabilities
+    V2_0: true
+  Orderer: &OrdererCapabilities
+    V2_0: true
+  Application: &ApplicationCapabilities
+    V2_0: true
+
+################################################################################
+# Application defaults
+################################################################################
+Application: &ApplicationDefaults
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+
+    # LifecycleEndorsement governs chaincode approval. MAJORITY means two of the
+    # three organisations must agree before a new chaincode version goes live —
+    # so a compromised manufacturer cannot quietly deploy a build that skips its
+    # own access checks.
+    LifecycleEndorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+
+    # Endorsement is the default policy for chaincode that does not declare one.
+    # MAJORITY here is the security property that makes three organisations worth
+    # the extra containers: two independent peers must execute the transaction and
+    # arrive at byte-identical results before the orderer will accept it. One
+    # compromised organisation cannot forge a record on its own.
+    #
+    # It is also why the chaincode must be deterministic. Any wall-clock read, map
+    # iteration, or rich query in a write path makes the two results differ, and
+    # the transaction is rejected — see blockchain/chaincode/medicine.go.
+    Endorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+
+  Capabilities:
+    <<: *ApplicationCapabilities
+
+################################################################################
+# Orderer defaults
+################################################################################
+Orderer: &OrdererDefaults
+  OrdererType: etcdraft
+  Addresses:
+    - orderer.truemed.in:7050
+
+  EtcdRaft:
+    Consenters:
+      - Host: orderer.truemed.in
+        Port: 7050
+        ClientTLSCert: organizations/ordererOrganizations/truemed.in/orderers/orderer.truemed.in/tls/server.crt
+        ServerTLSCert: organizations/ordererOrganizations/truemed.in/orderers/orderer.truemed.in/tls/server.crt
+
+  # A block is cut when it is full, or when BatchTimeout elapses, whichever comes
+  # first. Two seconds is a deliberate compromise: a patient scanning a QR code
+  # only reads state, so this delay never affects them, but a manufacturer minting
+  # a batch waits up to two seconds for the last partial block. Lowering it makes
+  # small writes feel faster and wastes throughput on half-empty blocks.
+  BatchTimeout: 2s
+  BatchSize:
+    MaxMessageCount: 500
+    AbsoluteMaxBytes: 10 MB
+    PreferredMaxBytes: 2 MB
+
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+    BlockValidation:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+
+################################################################################
+# Channel defaults
+################################################################################
+Channel: &ChannelDefaults
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+  Capabilities:
+    <<: *ChannelCapabilities
+
+################################################################################
+# Profiles
+################################################################################
+Profiles:
+
+  # The only profile. Produces the application channel's genesis block directly:
+  #
+  #   configtxgen -profile TrueMedChannel -outputBlock <file> -channelID truemed
+  #
+  TrueMedChannel:
+    <<: *ChannelDefaults
+    Orderer:
+      <<: *OrdererDefaults
+      Organizations:
+        - *OrdererOrg
+      Capabilities: *OrdererCapabilities
+    Application:
+      <<: *ApplicationDefaults
+      Organizations:
+        - *Manufacturer
+        - *Distributor
+        - *Regulator
+      Capabilities: *ApplicationCapabilities

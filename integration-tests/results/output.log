@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "C:\Users\nanda\OneDrive\Desktop\My project\TrueMed\integration-tests\scripts\full-workflow-test.py", line 16, in <module>
+    from truemed_qr import (
+    ...<19 lines>...
+    )
+ImportError: cannot import name 'SIGNATURE_INVALID' from 'truemed_qr' (C:\Users\nanda\OneDrive\Desktop\My project\TrueMed\qr-generator\truemed_qr\__init__.py)

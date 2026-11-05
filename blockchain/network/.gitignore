@@ -1,0 +1,14 @@
+# Secrets. .env holds the CouchDB password; it must never be committed.
+.env
+
+# Generated identities. Private keys — one leaked keystore lets anyone sign as
+# the manufacturer, which is the one thing this whole system exists to prevent.
+# Regenerate with ./scripts/generate.sh.
+organizations/
+
+# Generated channel artifacts: genesis block, chaincode packages.
+channel-artifacts/
+
+# Fabric CLI scratch
+*.tar.gz
+log.txt

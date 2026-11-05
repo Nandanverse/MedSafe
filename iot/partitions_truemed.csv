@@ -1,0 +1,19 @@
+# TrueMed ESP32 partition table (4 MB flash)
+#
+# Why a custom table instead of the default: the stock "default.csv" gives the
+# filesystem about 1.5 MB but only ~1.2 MB per OTA slot, and it reserves two app
+# slots. This firmware has no OTA path (the device lives in a sealed cold box and
+# is reflashed over USB during servicing), so the second app slot is dead weight.
+# Trading it for filesystem space directly buys offline endurance: every extra
+# 100 KB of LittleFS is roughly another 800 buffered readings, which is another
+# 2.8 days of outage survived at one reading per 5 minutes.
+#
+# One app slot of 1.9 MB is ample - the build lands near 900 KB with WiFi and
+# mbedTLS linked in - and leaves ~1.9 MB of filesystem.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x1E0000,
+spiffs,     data, spiffs,   0x1F0000, 0x200000,
+coredump,   data, coredump, 0x3F0000, 0x10000,

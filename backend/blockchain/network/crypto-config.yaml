@@ -1,0 +1,74 @@
+# TrueMed — cryptogen configuration.
+#
+# Generates the MSP and TLS material for one orderer organisation and three peer
+# organisations. Run through scripts/generate.sh, which invokes cryptogen inside
+# the fabric-tools container so you do not have to download the Fabric binaries.
+#
+# ── Why cryptogen and not Fabric CA ──────────────────────────────────────────
+#
+# cryptogen mints all the certificates in one shot from this file. That is exactly
+# what a demo needs: it is deterministic, it needs no running service, and it
+# takes two seconds. It is also explicitly not for production, and the reason is
+# worth stating plainly rather than hiding: every private key it generates is
+# written to disk in the clear, there is no enrolment step, no revocation, and no
+# way to issue a certificate to a new participant later without regenerating the
+# lot. A real CDSCO deployment needs Fabric CA (or an existing PKI) so that a
+# pharmacy can be enrolled on Tuesday and revoked on Wednesday.
+#
+# For a capstone that must run reliably in front of an audience, cryptogen is the
+# right trade. The migration path is documented in README.md.
+#
+# EnableNodeOUs is set on every organisation. Without it, the OU-based policies in
+# configtx.yaml ("ManufacturerMSP.peer", "ManufacturerMSP.client") match nothing,
+# and the failure looks like a permission error rather than a configuration one.
+
+OrdererOrgs:
+  - Name: Orderer
+    Domain: truemed.in
+    EnableNodeOUs: true
+    Specs:
+      - Hostname: orderer
+        SANS:
+          - localhost
+          - 127.0.0.1
+
+PeerOrgs:
+  # The manufacturer mints units. This is the organisation whose signature makes
+  # "registered on TrueMed" mean anything, so its key material is the most
+  # sensitive in the system.
+  - Name: Manufacturer
+    Domain: manufacturer.truemed.in
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
+        - 127.0.0.1
+    Users:
+      Count: 1
+
+  # The distributor records custody hops and cold-chain readings.
+  - Name: Distributor
+    Domain: distributor.truemed.in
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
+        - 127.0.0.1
+    Users:
+      Count: 1
+
+  # The regulator (CDSCO) issues recalls and reads everything. It deliberately
+  # cannot mint or move stock: an auditor with write access to the records it
+  # audits is not an auditor.
+  - Name: Regulator
+    Domain: regulator.truemed.in
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
+        - 127.0.0.1
+    Users:
+      Count: 1
