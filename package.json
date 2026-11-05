@@ -1,0 +1,42 @@
+{
+  "name": "truemed-api",
+  "version": "1.0.0",
+  "description": "TrueMed backend API — blockchain-backed medicine and vaccine verification. Truth in Every Medicine.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch --env-file=.env src/server.js",
+    "test": "node --test --test-reporter=spec \"tests/**/*.test.js\"",
+    "test:core": "node --test --test-reporter=spec \"tests/core/*.test.js\"",
+    "test:watch": "node --test --watch \"tests/**/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage \"tests/**/*.test.js\"",
+    "migrate": "node src/db/migrate.js up",
+    "migrate:status": "node src/db/migrate.js status",
+    "dev-keys": "node scripts/make-dev-keys.js",
+    "seed": "node scripts/seed-demo.js",
+    "issue-key": "node scripts/issue-api-key.js",
+    "fixtures": "python3 tests/fixtures/generate-fixtures.py"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.9",
+    "@hyperledger/fabric-gateway": "^1.5.0",
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "redis": "^4.6.14"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "truemed",
+    "anti-counterfeit",
+    "hyperledger-fabric",
+    "cdsco",
+    "cold-chain",
+    "pharmaceutical"
+  ]
+}

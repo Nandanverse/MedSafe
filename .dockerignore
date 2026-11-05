@@ -1,0 +1,53 @@
+# Files excluded from the Docker build context.
+#
+# This is a security control as much as a speed one: everything listed here would
+# otherwise be uploaded to the daemon and could end up in an image layer. A .env
+# baked into a layer stays recoverable from the image even if a later layer
+# deletes it, and `keys/` holds signing material.
+
+# Secrets and key material — never in an image
+.env
+.env.*
+!.env.example
+keys/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies are installed inside the build, not copied in. Copying a
+# host node_modules would also drag in native modules built for the host's libc,
+# which breaks on Alpine's musl.
+node_modules/
+npm-debug.log*
+.npm/
+
+# Tests and fixtures are not shipped. The fixtures contain generated private keys.
+tests/
+coverage/
+.nyc_output/
+
+# The two scripts that read tests/fixtures/, which is excluded just above. In an
+# image they could only fail on a file that is not there — and seed-demo.js writes
+# fabricated medicine records to a ledger that has no undo, which is not a tool to
+# leave lying around inside a deployment. scripts/issue-api-key.js is deliberately
+# kept: issuing a real key needs nothing but the database.
+scripts/seed-demo.js
+scripts/make-dev-keys.js
+
+# Local tooling and editor state
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Documentation and scratch space
+*.md
+!README.md
+docs/
+scripts/dev/
+tmp/
+*.log

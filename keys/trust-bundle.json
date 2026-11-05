@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "issued_at": "2026-08-22T00:00:00Z",
+  "keys": [
+    {
+      "mfg_licence_no": "MH/25D/2019/187",
+      "manufacturer": "Sanjeevani Pharma Ltd, Plot 42 MIDC, Pune 411018",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1lTyTYyDCLZeZ0ALf2B6F0Mvxl9G\nCX9Y8z8k3l2Ha6dRFWPtj/PxPHp2cIvKLDBMdt3PIMvcozPC6k61l0mgkA==\n-----END PUBLIC KEY-----\n",
+      "fingerprint": "e97cd09e296732d8",
+      "valid_from": "2020-01-01",
+      "valid_until": "2099-12-31",
+      "status": "active"
+    },
+    {
+      "mfg_licence_no": "KA/25B/2021/044",
+      "manufacturer": "Bharat Biologics Pvt Ltd, Plot 9 Peenya, Bengaluru 560058",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEY4vRymP3lb/k6zLaGvWihffEhmdC\nPNhwgHyp9Pydq4+X+MMVmvRLEcHaNEgEUmGaiy9w3p1RxyxEUkHFQwvGng==\n-----END PUBLIC KEY-----\n",
+      "fingerprint": "10d83d5d58b6953d",
+      "valid_from": "2020-01-01",
+      "valid_until": "2099-12-31",
+      "status": "active"
+    },
+    {
+      "mfg_licence_no": "GJ/25D/2017/512",
+      "manufacturer": "Sunrise Formulations Pvt Ltd, GIDC Vatva, Ahmedabad 382445",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9/yp27aVuVQKfNfMKL3Xd8Opltz8\nr+6iWkN5gYGY287nOJqb9a22lf0V5iT2Eiqu5ht6IM5UqUoZ48rg0pbdiQ==\n-----END PUBLIC KEY-----\n",
+      "fingerprint": "d730ab4882f26cee",
+      "valid_from": "2020-01-01",
+      "valid_until": "2099-12-31",
+      "status": "revoked"
+    }
+  ],
+  "root_signature": "fbd268e713d4f6259ae5f5f2037ca00ef12519b26b8253d9d8a2c34c73a606f77bff87515060d6c42543a1fbb7188cf55eb130fcd7600016289aa0c97826c369",
+  "root_fingerprint": "bff333b3eef9f2df"
+}
