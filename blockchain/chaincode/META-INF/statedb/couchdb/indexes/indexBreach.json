@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["doc_type", "type", "cold_chain_breached"]
+  },
+  "ddoc": "indexBreachDoc",
+  "name": "indexBreach",
+  "type": "json"
+}

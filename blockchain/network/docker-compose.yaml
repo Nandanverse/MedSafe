@@ -1,0 +1,371 @@
+# TrueMed — Hyperledger Fabric 2.5 network.
+#
+# One orderer (Raft), three peer organisations, one CouchDB per peer, and a CLI
+# container that carries the Fabric binaries so nothing has to be installed on the
+# host.
+#
+# Start with scripts/network.sh up — not with `docker compose up` directly, because
+# the crypto material and the genesis block must exist first.
+#
+# ── Notes on things that are easy to get wrong here ──────────────────────────
+#
+# TLS is on for every connection, including the orderer's admin endpoint. A Fabric
+# network with TLS disabled works fine on a laptop and is worthless as a
+# demonstration of a system whose entire purpose is trustworthy records.
+#
+# The orderer uses BOOTSTRAPMETHOD=none and the channel participation API. The
+# older GENESISMETHOD/GENESISFILE pair was removed in Fabric 2.x; configuration
+# copied from a 1.4-era tutorial starts the container and then fails to join any
+# channel.
+#
+# CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE must match the network name below. The peer
+# passes it to the Docker daemon when launching a chaincode container; if it is
+# wrong the chaincode starts on a different network, the peer cannot reach it, and
+# the only symptom is a timeout during chaincode commit.
+#
+# Every secret comes from .env. ${COUCHDB_PASSWORD:?...} makes Compose refuse to
+# start rather than fall back to a default — a network that boots with a blank
+# password is worse than one that will not boot.
+
+networks:
+  truemed:
+    name: truemed_net
+
+volumes:
+  orderer.truemed.in:
+  peer0.manufacturer.truemed.in:
+  peer0.distributor.truemed.in:
+  peer0.regulator.truemed.in:
+  couchdb-manufacturer:
+  couchdb-distributor:
+  couchdb-regulator:
+
+services:
+
+  # ── Ordering service ───────────────────────────────────────────────────────
+  #
+  # A single Raft node. This is the one place where the demo topology diverges
+  # from what a real deployment needs, and it is a genuine single point of
+  # failure: if this container dies, no new transaction can be committed, though
+  # every peer keeps serving reads from its own copy of the ledger.
+  #
+  # Raft tolerates the loss of a minority of nodes, so production needs at least
+  # three orderers — ideally run by different organisations, since an ordering
+  # service controlled by one party can censor transactions it dislikes. Three
+  # orderers on one free-tier VM is three times the memory for zero added
+  # resilience, so the demo runs one and says so out loud.
+  orderer.truemed.in:
+    container_name: orderer.truemed.in
+    image: hyperledger/fabric-orderer:${FABRIC_VERSION}
+    restart: unless-stopped
+    environment:
+      - FABRIC_LOGGING_SPEC=${FABRIC_LOGGING_SPEC}
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+      # No bootstrap block: the channel is created afterwards with
+      # `osnadmin channel join`, which is the Fabric 2.3+ mechanism.
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=none
+      - ORDERER_CHANNELPARTICIPATION_ENABLED=true
+      - ORDERER_GENERAL_TLS_ENABLED=true
+      - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      # Cluster credentials are used for Raft traffic between orderers. With one
+      # orderer they are unused, but omitting them makes the node fail to start
+      # rather than fall back to something sensible.
+      - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      # The admin endpoint is what osnadmin talks to. It requires mutual TLS: the
+      # client must present a certificate signed by a CA in CLIENTROOTCAS, so
+      # reaching port 7053 is not by itself enough to join or remove a channel.
+      - ORDERER_ADMIN_LISTENADDRESS=0.0.0.0:7053
+      - ORDERER_ADMIN_TLS_ENABLED=true
+      - ORDERER_ADMIN_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_ADMIN_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_ADMIN_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_ADMIN_TLS_CLIENTROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      # Prometheus scrapes this in Component 6.
+      - ORDERER_OPERATIONS_LISTENADDRESS=0.0.0.0:9443
+      - ORDERER_METRICS_PROVIDER=prometheus
+    working_dir: /root
+    command: orderer
+    volumes:
+      - ./organizations/ordererOrganizations/truemed.in/orderers/orderer.truemed.in/msp:/var/hyperledger/orderer/msp:ro
+      - ./organizations/ordererOrganizations/truemed.in/orderers/orderer.truemed.in/tls:/var/hyperledger/orderer/tls:ro
+      - orderer.truemed.in:/var/hyperledger/production/orderer
+    ports:
+      - "7050:7050"
+      - "7053:7053"
+      - "9443:9443"
+    networks:
+      - truemed
+
+  # ── State databases ────────────────────────────────────────────────────────
+  #
+  # One CouchDB per peer, never shared. Two peers pointed at the same database
+  # silently corrupt each other's state: each believes it owns every key, and the
+  # divergence only surfaces when a block fails validation on one peer and not the
+  # other.
+  #
+  # CouchDB rather than the default LevelDB because the dashboards need rich
+  # queries — "every vaccine with a cold-chain breach" cannot be answered by a
+  # key-value store without scanning every key.
+
+  couchdb-manufacturer:
+    container_name: couchdb-manufacturer
+    image: couchdb:${COUCHDB_VERSION}
+    restart: unless-stopped
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER:?set COUCHDB_USER in .env}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env - generate one with: openssl rand -base64 24}
+    volumes:
+      - couchdb-manufacturer:/opt/couchdb/data
+    # Bound to localhost only. CouchDB's admin interface exposes every medicine
+    # record on the channel; there is no reason for it to answer from the public
+    # internet, and on a cloud VM the difference between "5984:5984" and
+    # "127.0.0.1:5984:5984" is the difference between a private database and a
+    # public one.
+    ports:
+      - "127.0.0.1:5984:5984"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:5984/_up || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - truemed
+
+  couchdb-distributor:
+    container_name: couchdb-distributor
+    image: couchdb:${COUCHDB_VERSION}
+    restart: unless-stopped
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER:?set COUCHDB_USER in .env}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+    volumes:
+      - couchdb-distributor:/opt/couchdb/data
+    ports:
+      - "127.0.0.1:6984:5984"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:5984/_up || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - truemed
+
+  couchdb-regulator:
+    container_name: couchdb-regulator
+    image: couchdb:${COUCHDB_VERSION}
+    restart: unless-stopped
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER:?set COUCHDB_USER in .env}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+    volumes:
+      - couchdb-regulator:/opt/couchdb/data
+    ports:
+      - "127.0.0.1:7984:5984"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:5984/_up || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - truemed
+
+  # ── Peers ──────────────────────────────────────────────────────────────────
+  #
+  # Each peer holds a full copy of the ledger and executes chaincode. Because the
+  # channel's endorsement policy is MAJORITY, two of these three must independently
+  # execute a write transaction and produce identical results before it commits.
+  #
+  # CHAINCODEADDRESS is the address the chaincode container dials back on, and it
+  # must be the peer's DNS name rather than localhost: the chaincode runs in its
+  # own container, where localhost is itself.
+
+  peer0.manufacturer.truemed.in:
+    container_name: peer0.manufacturer.truemed.in
+    image: hyperledger/fabric-peer:${FABRIC_VERSION}
+    restart: unless-stopped
+    depends_on:
+      couchdb-manufacturer:
+        condition: service_healthy
+    environment:
+      - FABRIC_LOGGING_SPEC=${FABRIC_LOGGING_SPEC}
+      - CORE_PEER_ID=peer0.manufacturer.truemed.in
+      - CORE_PEER_ADDRESS=peer0.manufacturer.truemed.in:7051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.manufacturer.truemed.in:7052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
+      - CORE_PEER_LOCALMSPID=ManufacturerMSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/fabric/msp
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      # EXTERNALENDPOINT is what this peer advertises to other organisations. Leave
+      # it unset and cross-org gossip never forms, so service discovery returns one
+      # endorser and MAJORITY endorsement fails with a confusing "could not find
+      # any peers" error.
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.manufacturer.truemed.in:7051
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.manufacturer.truemed.in:7051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb-manufacturer:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=${COUCHDB_USER:?set COUCHDB_USER in .env}
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=truemed_net
+      # Generous timeouts. The first deployment compiles the Go chaincode inside a
+      # container; on a free-tier VM with two cores that takes minutes, and the
+      # 30-second default fails with a message about the container not responding
+      # rather than about the build still running.
+      - CORE_CHAINCODE_INSTALLTIMEOUT=600s
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9444
+      - CORE_METRICS_PROVIDER=prometheus
+    volumes:
+      - ./organizations/peerOrganizations/manufacturer.truemed.in/peers/peer0.manufacturer.truemed.in/msp:/etc/hyperledger/fabric/msp:ro
+      - ./organizations/peerOrganizations/manufacturer.truemed.in/peers/peer0.manufacturer.truemed.in/tls:/etc/hyperledger/fabric/tls:ro
+      - peer0.manufacturer.truemed.in:/var/hyperledger/production
+      - /var/run/docker.sock:/host/var/run/docker.sock
+    working_dir: /root
+    command: peer node start
+    ports:
+      - "7051:7051"
+      - "9444:9444"
+    networks:
+      - truemed
+
+  peer0.distributor.truemed.in:
+    container_name: peer0.distributor.truemed.in
+    image: hyperledger/fabric-peer:${FABRIC_VERSION}
+    restart: unless-stopped
+    depends_on:
+      couchdb-distributor:
+        condition: service_healthy
+    environment:
+      - FABRIC_LOGGING_SPEC=${FABRIC_LOGGING_SPEC}
+      - CORE_PEER_ID=peer0.distributor.truemed.in
+      - CORE_PEER_ADDRESS=peer0.distributor.truemed.in:9051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:9051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.distributor.truemed.in:9052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:9052
+      - CORE_PEER_LOCALMSPID=DistributorMSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/fabric/msp
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.distributor.truemed.in:9051
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.distributor.truemed.in:9051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb-distributor:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=${COUCHDB_USER:?set COUCHDB_USER in .env}
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=truemed_net
+      - CORE_CHAINCODE_INSTALLTIMEOUT=600s
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9445
+      - CORE_METRICS_PROVIDER=prometheus
+    volumes:
+      - ./organizations/peerOrganizations/distributor.truemed.in/peers/peer0.distributor.truemed.in/msp:/etc/hyperledger/fabric/msp:ro
+      - ./organizations/peerOrganizations/distributor.truemed.in/peers/peer0.distributor.truemed.in/tls:/etc/hyperledger/fabric/tls:ro
+      - peer0.distributor.truemed.in:/var/hyperledger/production
+      - /var/run/docker.sock:/host/var/run/docker.sock
+    working_dir: /root
+    command: peer node start
+    ports:
+      - "9051:9051"
+      - "9445:9445"
+    networks:
+      - truemed
+
+  peer0.regulator.truemed.in:
+    container_name: peer0.regulator.truemed.in
+    image: hyperledger/fabric-peer:${FABRIC_VERSION}
+    restart: unless-stopped
+    depends_on:
+      couchdb-regulator:
+        condition: service_healthy
+    environment:
+      - FABRIC_LOGGING_SPEC=${FABRIC_LOGGING_SPEC}
+      - CORE_PEER_ID=peer0.regulator.truemed.in
+      - CORE_PEER_ADDRESS=peer0.regulator.truemed.in:11051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:11051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.regulator.truemed.in:11052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:11052
+      - CORE_PEER_LOCALMSPID=RegulatorMSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/fabric/msp
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.regulator.truemed.in:11051
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.regulator.truemed.in:11051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb-regulator:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=${COUCHDB_USER:?set COUCHDB_USER in .env}
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=truemed_net
+      - CORE_CHAINCODE_INSTALLTIMEOUT=600s
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9446
+      - CORE_METRICS_PROVIDER=prometheus
+    volumes:
+      - ./organizations/peerOrganizations/regulator.truemed.in/peers/peer0.regulator.truemed.in/msp:/etc/hyperledger/fabric/msp:ro
+      - ./organizations/peerOrganizations/regulator.truemed.in/peers/peer0.regulator.truemed.in/tls:/etc/hyperledger/fabric/tls:ro
+      - peer0.regulator.truemed.in:/var/hyperledger/production
+      - /var/run/docker.sock:/host/var/run/docker.sock
+    working_dir: /root
+    command: peer node start
+    ports:
+      - "11051:11051"
+      - "9446:9446"
+    networks:
+      - truemed
+
+  # ── CLI ────────────────────────────────────────────────────────────────────
+  #
+  # Carries peer, osnadmin, configtxgen, cryptogen and configtxlator, so the host
+  # needs nothing but Docker. It holds every organisation's admin credentials,
+  # which is convenient for a demo and is precisely what a real deployment must
+  # never do — each organisation would run its own client with only its own keys.
+  cli:
+    container_name: truemed-cli
+    image: hyperledger/fabric-tools:${FABRIC_VERSION}
+    tty: true
+    stdin_open: true
+    environment:
+      - GOPATH=/opt/gopath
+      - FABRIC_LOGGING_SPEC=INFO
+      - FABRIC_CFG_PATH=/etc/hyperledger/fabric
+      - CORE_PEER_TLS_ENABLED=true
+    working_dir: /opt/truemed
+    command: /bin/bash
+    volumes:
+      - ./organizations:/opt/truemed/organizations
+      - ./channel-artifacts:/opt/truemed/channel-artifacts
+      - ./scripts:/opt/truemed/scripts
+      - ../chaincode:/opt/truemed/chaincode
+      - /var/run/docker.sock:/host/var/run/docker.sock
+    depends_on:
+      - orderer.truemed.in
+      - peer0.manufacturer.truemed.in
+      - peer0.distributor.truemed.in
+      - peer0.regulator.truemed.in
+    networks:
+      - truemed
