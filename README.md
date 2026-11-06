@@ -1,4 +1,4 @@
-# TrueMed
+# MedSafe
 
 **Truth in Every Medicine** · हर दवा में सच्चाई
 
@@ -15,7 +15,7 @@ Final-year capstone project · BS Cybersecurity
 Counterfeit and substandard medicines circulate widely in India, and the cold chain that
 keeps vaccines between 2 °C and 8 °C fails routinely in rural facilities. Neither problem
 has a feedback loop: a patient cannot check a strip before swallowing it, and a regulator
-with a few hundred inspectors cannot watch five lakh pharmacies. TrueMed closes both
+with a few hundred inspectors cannot watch five lakh pharmacies. MedSafe closes both
 loops with cryptographic proof at the point of sale and an immutable custody record
 behind it.
 
@@ -137,7 +137,7 @@ one side, backend + Flutter on the other, with dashboards and firmware last.
 > **One caution.** This directory currently sits inside OneDrive. Do not run `git init`
 > here — OneDrive syncing a live `.git` directory is a known way to corrupt a repository,
 > and it gets worse with two people syncing the same folder. Copy the project to a local
-> path outside OneDrive, for example `C:\dev\truemed`, initialise git there, and push to
+> path outside OneDrive, for example `C:\dev\MedSafe`, initialise git there, and push to
 > GitHub. Use GitHub as the sync layer between the two of you, not OneDrive.
 
 ---
