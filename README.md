@@ -6,7 +6,7 @@ Blockchain-backed anti-counterfeit verification for medicines and vaccines in In
 A patient scans the QR on a strip or vial and learns, in under a second, whether it is
 genuine, expired, recalled, cloned, or has been through a cold-chain failure.
 
-Final-year capstone project · BS Cybersecurity
+Final-year capstone project · B.Tech Csc Cybersecurity
 
 ---
 
